@@ -15,9 +15,7 @@ import type {
 type OpenAIAsrSettings = RemoteBackendSettings;
 
 export type AsrRequest = {
-  /** `data:audio/wav;base64,…` of the whole recording, for chat completions. */
-  dataUrl: string;
-  /** The same recording as raw WAV bytes, for a multipart upload. */
+  /** The whole recording as 16-bit mono WAV bytes. */
   wav: Buffer;
 };
 
@@ -97,13 +95,13 @@ function requireTranscript(text: unknown): string {
 
 /**
  * `chat` request style: the recording rides an `input_audio` block on
- * `/chat/completions`. Audio-capable chat models (OpenAI's
- * `gpt-4o-audio-preview`, omni-style servers) answer this way.
+ * `/chat/completions` as a base64 WAV data URL. Audio-capable chat models
+ * (OpenAI's `gpt-4o-audio-preview`, omni-style servers) answer this way.
  */
 function chatTransport(client: OpenAI, model: string): AsrTransport {
   return async (request, signal) => {
     const completion = (await client.chat.completions.create(
-      buildChatBody(model, request.dataUrl) as never,
+      buildChatBody(model, wavToDataUrl(request.wav)) as never,
       { signal } as never,
     )) as ChatCompletionLike;
     return requireTranscript(completion.choices?.[0]?.message?.content);
@@ -219,8 +217,9 @@ export class OpenAIAsrBackend {
         transport = this.transport;
       }
       signal?.throwIfAborted();
-      const wav = encodeWav(pcm, SAMPLE_RATE);
-      const text = await transport({ wav, dataUrl: wavToDataUrl(wav) }, signal);
+      // Only the WAV bytes travel; the chat transport derives its data URL,
+      // so an upload-only backend never pays for the base64 copy.
+      const text = await transport({ wav: encodeWav(pcm, SAMPLE_RATE) }, signal);
       signal?.throwIfAborted();
       writeLog(
         "debug",

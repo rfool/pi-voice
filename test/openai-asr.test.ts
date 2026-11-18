@@ -79,7 +79,7 @@ test("finishRemoteTranscript trims and applies the Chinese output preference", a
   assert.equal(english, "hello world");
 });
 
-test("transcribe uploads one WAV data URL and returns the transcript", async () => {
+test("transcribe uploads the WAV recording and returns the transcript", async () => {
   const requests: AsrRequest[] = [];
   const backend = new OpenAIAsrBackend(CONFIG, {
     transport: async (request) => {
@@ -92,7 +92,7 @@ test("transcribe uploads one WAV data URL and returns the transcript", async () 
   const text = await backend.transcribe(pcm(1));
   assert.equal(text, "remote text");
   assert.equal(requests.length, 1);
-  assert.match(requests[0]!.dataUrl, /^data:audio\/wav;base64,/);
+  assert.equal(requests[0]!.wav.toString("ascii", 0, 4), "RIFF", "raw WAV bytes reach the transport");
   await backend.dispose();
 });
 
@@ -209,7 +209,7 @@ test("the chat style posts an input_audio block to /chat/completions", async (t)
     // The transport hands back the raw reply; trimming happens with the
     // Chinese script preference in finishRemoteTranscript.
     assert.equal(
-      await transport({ wav, dataUrl: wavToDataUrl(wav) }),
+      await transport({ wav }),
       " chat text ",
     );
   } finally {
@@ -236,7 +236,7 @@ test("the transcriptions style uploads WAV to /audio/transcriptions", async (t) 
       endpointStyle: "transcriptions",
     });
     assert.equal(
-      await transport({ wav, dataUrl: `data:audio/wav;base64,${wav.toString("base64")}` }),
+      await transport({ wav }),
       " upload text ",
     );
   } finally {
@@ -271,7 +271,7 @@ test("the transcriptions style surfaces an empty transcript like the chat style"
     });
     const wav = encodeWav(Float32Array.of(0.1), 16_000);
     await assert.rejects(
-      transport({ wav, dataUrl: "data:audio/wav;base64,AA==" }),
+      transport({ wav }),
       /empty transcript/,
     );
   } finally {
